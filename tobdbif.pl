@@ -7,7 +7,7 @@ use DB_File ;
 use Getopt::Long ;
 use Pod::Usage ;
 
-my $version = '0.0.1'; # use '' to print 'development version'
+my $version = '0.0.2'; # use '' to print 'development version'
 my $customScriptName = ''; # use '' if you want autodetection
 my $projectUrl = ''; # use '' if you don't need this option
 
@@ -64,7 +64,7 @@ my $opts = {
   'dump' => {
     'short'        => 'Z',
     'long'         => 'dump',
-    'type'         => 's',
+    'type'         => 'b',
     'mandatory'    => 'false',
   }
   # 'mandatory'        => {
@@ -108,29 +108,32 @@ if (exists($config->{'create'})) {
   &outputDebug('Received argKey -> '.$argKey.' argValue -> '.$argValue,$config);
   if ($config->{'force'} or !(exists($h{$argKey}))){
     $h{$argKey} = $argValue;
+    &outputDebug('argKey -> '.$argKey.' argValue -> '.$argValue.' inserted correctly',$config);
+    $exitMsg = 'OK';
+    $exitMsg = ($config->{'quiet'}?'':$argKey.' -> '.$argValue.' inserted in '.$targetDBFile);
   } else {
-    &exitScript('CRITICAL','Key already found in DB, use U(update) or f(force) option');
-    # $exitStatus='CRITICAL';
-    # $exitMsg='Key already found in DB, use U(update) or f(force) option';
+    # &exitScript('CRITICAL','Key already found in DB, use U(update) or f(force) option');
+    $exitStatus='CRITICAL';
+    $exitMsg='Key already found in DB, use U(update) or f(force) option';
   };
   delete($config->{'create'});
-  &outputDebug('argKey -> '.$argKey.' argValue -> '.$argValue.' inserted correctly',$config);
-  # $exitStatus='OK';
-  $exitMsg = ($config->{'quiet'}?'':$argKey.' -> '.$argValue.' inserted in '.$targetDBFile);
-  &exitScript('OK',$exitMsg);
+  untie(%h);
+  &exitScript($exitStatus,$exitMsg);
 } elsif (exists($config->{'read'})) {
   &outputDebug('Read mode activated on file '.$targetDBFile,$config);
   my $argKey = $config->{'read'};
   &outputDebug('Requested key -> '.$argKey,$config);
   if (exists($h{$argKey})){
-    # &exitScript('OK',$h{$argKey});
-    $exitStatus='OK';
-    print $h{$argKey};
+    $exitStatus = 'OK' ;
+    $exitMsg = $h{$argKey} ;
   } else {
-    $exitStatus = 'CRITICAL';
     &outputDebug('Requested key -> '.$argKey.' not found',$config);
-    $exitMsg='Requested key -> '.$argKey.' not found';
+    $exitStatus = 'CRITICAL';
+    $exitMsg = 'Requested key -> '.$argKey.' not found in DB'.$targetDBFile;
   };
+  delete($config->{'read'});
+  untie(%h);
+  &exitScript($exitStatus,$exitMsg);
 } elsif (exists($config->{'update'})) {
   &outputDebug('Update mode activated on file '.$targetDBFile,$config);
   $config->{'update'} =~ m/^\((\w+),(\w+)\)$/;
@@ -138,12 +141,15 @@ if (exists($config->{'create'})) {
   &outputDebug('Received argKey -> '.$argKey.' argValue -> '.$argValue,$config);
   if ($config->{'force'} or exists($h{$argKey})){
     $h{$argKey} = $argValue;
+    $exitStatus='OK';
+    $exitMsg='Key not found in DB, use C(create) or f(force) option';
   } else {
-    # &exitScript('CRITICAL','Key not found in DB, use C(create) or f(force) option');
     $exitStatus='CRITICAL';
     $exitMsg='Key not found in DB, use C(create) or f(force) option';
   };
   delete($config->{'update'});
+  untie(%h);
+  &exitScript($exitStatus,$exitMsg);
 } elsif (exists($config->{'delete'})) {
   &outputDebug('Delete mode activated on file '.$targetDBFile,$config);
   my $argKey= $config->{'delete'};
@@ -151,16 +157,24 @@ if (exists($config->{'create'})) {
   if ($config->{'force'} or exists($h{$argKey})){
     delete $h{$argKey};
   } else {
-    # &exitScript('CRITICAL','Key not found in DB, check the specified key or use f(force) option to disable warnings');
-    $exitStatus='CRITICAL';
-    $exitMsg='Key not found in DB, check the specified key or use f(force) option to disable warnings';
+    $exitStatus = 'CRITICAL';
+    $exitMsg = 'Key not found in DB, check the specified key or use f(force) option to disable warnings';
   };
   delete($config->{'delete'});
+  untie(%h);
+  &exitScript($exitStatus,$exitMsg);
 } elsif (exists($config->{'dump'})) {
   &outputDebug('Dump mode activated on file '.$targetDBFile,$config);
+  # print the contents of the DBFile
+  while (my ($k, $v) = each %h) { print "$k -> $v\n" } ;
+  $exitStatus = 'OK' ;
+  $exitMsg = '';
   delete($config->{'dump'});
+  untie(%h);
+  &exitScript($exitStatus,$exitMsg);
 };
-untie(%h);
+
+&exitScript('CRITICAL','No action taken, how the hell did I end up here? °_°');
 
 ### actual routine code ###
 sub exitScript {
@@ -173,7 +187,8 @@ sub exitScript {
   &help($exitMessage) if ($exitStatus eq 'USAGE');
 
   # print ($exitStatus.' - '.$exitMessage."\n") ; # use in Nagios
-  print ($exitMessage."\n") ;
+  $exitMessage .= ($exitMessage ne ''?"\n":'');
+  print ($exitMessage) ;
 
   if ($exitStatus eq 'OK')           {
     exit(0);
