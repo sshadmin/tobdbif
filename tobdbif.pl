@@ -101,15 +101,19 @@ if (!
   $exitStatus='USAGE';
   $exitMsg='You should choose one DB option from C(create), R(read), U(update), X(delete) or Z(dump)';
 };
+
 if (exists($config->{'create'})) {
   &outputDebug('Create mode activated on file '.$targetDBFile,$config);
-  $config->{'create'} =~ m/^\((\w+),(\w+)\)$/;
-  my ($argKey, $argValue) = (($1 or ''),($2 or ''));
+  $config->{'create'} =~ m/^\((\w+),(.+)\)$/;
+  my ($argKey, $argValue) = ((&trim($1) or ''),(&trim($2) or ''));
   &outputDebug('Received argKey -> '.$argKey.' argValue -> '.$argValue,$config);
   if ($config->{'force'} or !(exists($h{$argKey}))){
+    if (!(&checkArg($argKey) and &checkArg($argValue))){
+      &exitScript('CRITICAL','You must provide a valid \'(key,value)\' argument');
+    };
     $h{$argKey} = $argValue;
     &outputDebug('argKey -> '.$argKey.' argValue -> '.$argValue.' inserted correctly',$config);
-    $exitMsg = 'OK';
+    $exitStatus = 'OK';
     $exitMsg = ($config->{'quiet'}?'':$argKey.' -> '.$argValue.' inserted in '.$targetDBFile);
   } else {
     # &exitScript('CRITICAL','Key already found in DB, use U(update) or f(force) option');
@@ -121,8 +125,11 @@ if (exists($config->{'create'})) {
   &exitScript($exitStatus,$exitMsg);
 } elsif (exists($config->{'read'})) {
   &outputDebug('Read mode activated on file '.$targetDBFile,$config);
-  my $argKey = $config->{'read'};
+  my $argKey = &trim($config->{'read'});
   &outputDebug('Requested key -> '.$argKey,$config);
+  if (!(&checkArg($argKey))){
+    &exitScript('CRITICAL','You must provide a valid -R \'key\' argument');
+  };
   if (exists($h{$argKey})){
     $exitStatus = 'OK' ;
     $exitMsg = $h{$argKey} ;
@@ -137,9 +144,12 @@ if (exists($config->{'create'})) {
 } elsif (exists($config->{'update'})) {
   &outputDebug('Update mode activated on file '.$targetDBFile,$config);
   $config->{'update'} =~ m/^\((\w+),(\w+)\)$/;
-  my ($argKey, $argValue) = (($1 or ''),($2 or ''));
+  my ($argKey, $argValue) = ((&trim($1) or ''),(&trim($2) or ''));
   &outputDebug('Received argKey -> '.$argKey.' argValue -> '.$argValue,$config);
   if ($config->{'force'} or exists($h{$argKey})){
+    if (!(&checkArg($argKey) and &checkArg($argValue))){
+      &exitScript('CRITICAL','You must provide a valid \'(key,value)\' argument');
+    };
     $h{$argKey} = $argValue;
     $exitStatus='OK';
     $exitMsg='Key not found in DB, use C(create) or f(force) option';
@@ -152,8 +162,11 @@ if (exists($config->{'create'})) {
   &exitScript($exitStatus,$exitMsg);
 } elsif (exists($config->{'delete'})) {
   &outputDebug('Delete mode activated on file '.$targetDBFile,$config);
-  my $argKey= $config->{'delete'};
+  my $argKey= &trim($config->{'delete'});
   &outputDebug('Received argKey -> '.$argKey,$config);
+  if (!(&checkArg($argKey))){
+    &exitScript('CRITICAL','You must provide a valid -R \'key\' argument');
+  };
   if ($config->{'force'} or exists($h{$argKey})){
     delete $h{$argKey};
   } else {
@@ -172,9 +185,11 @@ if (exists($config->{'create'})) {
   delete($config->{'dump'});
   untie(%h);
   &exitScript($exitStatus,$exitMsg);
+} else {
+  &help();
 };
 
-&exitScript('CRITICAL','No action taken, how the hell did I end up here? °_°');
+&exitScript('CRITICAL','Internal script error (how the hell did I end up here btw? °_°)');
 
 ### actual routine code ###
 sub exitScript {
@@ -209,7 +224,7 @@ sub getScriptName {
 };
 
 sub help {
-  my $helpBodyTxt = (shift . "\n" or '');
+  my $helpBodyTxt = (shift or '')."\n";
   my $script_version = ($version or 'development version'); # $version is global to the script
   my $script_project_url = ($projectUrl or ''); # $projectUrl is global to the script
 
@@ -264,9 +279,14 @@ sub outputDebug {
 
 sub trim {
   my $string = (shift or '');
-    $string =~ s/^\P{IsPrint}+//g;
-    $string =~ s/\P{IsPrint}+$//g;
+    $string =~ s/^\s+//g;
+    $string =~ s/\s+$//g;
   return $string;
+};
+
+sub checkArg {
+  my $arg = (shift or '');
+  return ($arg ne '');
 };
 
 sub parseArgs {
